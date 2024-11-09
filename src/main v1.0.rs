@@ -2,7 +2,7 @@ use macroquad::prelude::*;
 use macroquad::audio::{load_sound, play_sound, Sound, PlaySoundParams};
 
 struct Bird {
-    body: Circle,
+    body: Rect,
     velocity: f32,
 }
 
@@ -14,19 +14,17 @@ impl Bird {
     fn jump(&mut self) {
         self.velocity = -8.0;  
     } 
-    fn die(&mut self, pipes: &mut Vec<Pipe>, gameover: &bool) {
-        if !gameover {
-            self.velocity = 0.0;
-            self.body.y = screen_height()/2.0;
-            *pipes = vec![];
-        }
+    fn die(&mut self, pipes: &mut Vec<Pipe>) {
+        self.velocity = 0.0;
+        self.body.y = screen_height()/2.0;
+        *pipes = vec![];
         
     }
 }
 
-fn make_bird(x: f32, y: f32, w: f32, velocity: f32) -> Bird {
+fn make_bird(x: f32, y: f32, w: f32, h: f32, velocity: f32) -> Bird {
     Bird {
-        body: Circle::new(x, y, w),
+        body: Rect::new(x, y, w, h),
         velocity,
     }
 }
@@ -66,7 +64,7 @@ fn window_conf() -> Conf {
 async fn main() {
     rand::srand(macroquad::miniquad::date::now() as u64);
 
-    let mut bird = make_bird(100.0, screen_height()/2.0, 60.0, 0.0);
+    let mut bird = make_bird(100.0, screen_height()/2.0, 60.0, 50.0, 0.0);
     let mut pipes: Vec<Pipe> = vec![];
     let mut i = 1;
     let mut collision_detected = false;
@@ -81,7 +79,6 @@ async fn main() {
     let pipe_texture_upper = load_texture("assets/pipe_upper.png").await.unwrap();
     let pipe_texture_lower = load_texture("assets/pipe_lower.png").await.unwrap();
     let pipe_texture_body = load_texture("assets/pipe_body.png").await.unwrap();
-    let gobg = load_texture("assets/gobg.png").await.unwrap();
 
     let flap: Sound = load_sound("assets/flap.ogg").await.unwrap();
     let hit: Sound = load_sound("assets/hit.ogg").await.unwrap();
@@ -92,39 +89,18 @@ async fn main() {
 
     let mut score = 0;
     let mut highest_score = 0;
-    let mut scroll_speed = 1.0;
 
     let mut running = false;
     let mut pressed = false;
-    let mut gameover = false;
 
     loop {
         clear_background(DARKBLUE);
         
-        
-        draw_scrolling_background(&background, scroll_speed, &mut offset);
-        if gameover {
-            scroll_speed = 0.0;
-        } else {
-            scroll_speed = 1.0;
-        }
-
-        if gameover && 0 > 1 {
-            draw_texture_ex(
-                &gobg,
-                0.0,
-                0.0,        
-                Color::from_rgba(255, 255, 255, 255),
-                DrawTextureParams {
-                    dest_size: Some(vec2(screen_width(), screen_height())),
-                    ..Default::default()
-                }
-            );
-        }
+        draw_scrolling_background(&background, 1.0, &mut offset);
 
         //HANDLE PIPES
         for pipe in &mut pipes {
-            if running{
+            if running {
                 pipe.go(score as f32);
             }
             
@@ -181,11 +157,8 @@ async fn main() {
                     ..Default::default()
                 }
             );
-            //draw_circle(bird.body.x+ bird.body.r/2.0, bird.body.y+ bird.body.r/2.0, bird.body.r/2.0, RED);
-            //draw_rectangle(pipe.body_lower.x, pipe.body_lower.y, pipe.body_lower.w, pipe.body_lower.h, BLUE);
-            //draw_rectangle(pipe.body_upper.x, pipe.body_upper.y, pipe.body_upper.w, pipe.body_upper.h, BLUE);
 
-            if circle_rect_intersect(bird.body.x + bird.body.r/2.0, bird.body.y + bird.body.r/2.0, bird.body.r/2.0, pipe.body_lower.x, pipe.body_lower.y, pipe.body_lower.w, pipe.body_lower.h) || circle_rect_intersect(bird.body.x + bird.body.r/2.0, bird.body.y + bird.body.r/2.0, bird.body.r/2.0, pipe.body_upper.x, pipe.body_upper.y, pipe.body_upper.w, pipe.body_upper.h) {
+            if pipe.body_upper.intersect(bird.body).is_some() || pipe.body_lower.intersect(bird.body).is_some() {
                 println!("collission detected");
                 collision_detected = true;
             }
@@ -198,10 +171,11 @@ async fn main() {
             }
 
         }
-        if (collision_detected || bird.body.y + bird.body.r > screen_height() || bird.body.y < 0.0) && !gameover{
+        if collision_detected || bird.body.y + bird.body.h > screen_height() || bird.body.y < 0.0 {
             play_sound(&hit, PlaySoundParams { looped: false, volume: 1.0 });
-            gameover = true;
-            collision_detected = true;
+            bird.die(&mut pipes);
+            collision_detected = false;
+            score = 0;
             running = false;
         }
         if pipes.len() >= 1 {
@@ -214,7 +188,7 @@ async fn main() {
         pipes.retain(|pipe| !pipe.edge());
 
         //HANDLE BIRD
-        if running ^ gameover {
+        if running {
             if i%1 == 0 {
                 bird.fall();
             }
@@ -223,18 +197,10 @@ async fn main() {
         }
 
         if (is_key_pressed(macroquad::input::KeyCode::Space) || is_mouse_button_pressed(MouseButton::Left)) && !pressed{
-            if !gameover {
-                flappy_animation = 0;
-                bird.jump(); 
-                running = true;
-                play_sound(&flap, PlaySoundParams { looped: false, volume: 1.0 });
-            } else if bird.body.y > screen_height() {
-                gameover = false;
-                collision_detected = false;
-                bird.die(&mut pipes, &gameover);
-                score = 0;
-            }
-            
+            bird.jump(); 
+            flappy_animation = 0;
+            running = true;
+            play_sound(&flap, PlaySoundParams { looped: false, volume: 1.0 });
             pressed = true;
         } 
         if is_key_released(macroquad::input::KeyCode::Space) ||  is_mouse_button_pressed(MouseButton::Left){
@@ -248,7 +214,7 @@ async fn main() {
                 bird.body.y,        
                 WHITE,
                 DrawTextureParams {
-                    dest_size: Some(vec2(bird.body.r, bird.body.r)),
+                    dest_size: Some(vec2(bird.body.w, bird.body.h)),
                     ..Default::default()
                 }
             );
@@ -259,7 +225,7 @@ async fn main() {
                 bird.body.y,        
                 WHITE,
                 DrawTextureParams {
-                    dest_size: Some(vec2(bird.body.r, bird.body.r-10.0)),
+                    dest_size: Some(vec2(bird.body.w, bird.body.h)),
                     ..Default::default()
                 }
             );
@@ -269,19 +235,8 @@ async fn main() {
             highest_score = score;
         }
 
-        if !running && !gameover {
-            draw_text(format!("Highest score: {}", highest_score).as_str(), 30.0, 45.0, 50.0, WHITE);
-        }
-        if running && !gameover {
-            draw_text(format!("{}", score).as_str(), (screen_width() - measure_text(format!("{}", score).as_str(), None, 120, 1.0).width) / 2.0, (160.0) / 2.0, 120.0, WHITE);
-            //draw_text(format!("Current score: {}", score).as_str(), 30.0, 45.0, 50.0, WHITE);
-        }
-        if gameover {
-            //sdraw_text(format!("{}", score).as_str(), (screen_width() - measure_text(format!("{}", score).as_str(), None, 650, 1.0).width) / 2.0, (screen_height() + 280.0) / 2.0, 650.0, BLACK);
-            draw_text(format!("{}", score).as_str(), (screen_width() - measure_text(format!("{}", score).as_str(), None, 600, 1.0).width) / 2.0, (screen_height() + 250.0) / 2.0, 600.0, WHITE);
-            //draw_text(format!("Current score: {}", score).as_str(), 30.0, 45.0, 50.0, WHITE);
-        }
-        
+        draw_text(format!("Highest score: {}", highest_score).as_str(), 30.0, 40.0, 40.0, WHITE);
+        draw_text(format!("Current score: {}", score).as_str(), 30.0, 70.0, 40.0, WHITE);
 
         if running {
             i+=1;
@@ -290,9 +245,6 @@ async fn main() {
             i = 1;
             flappy_animation = 100;
         }
-
-        //draw_text("GAME", screen_width()/2.0 - 175.0, 175.0, 200.0, WHITE);
-        //draw_text("OVER", screen_width()/2.0 - 175.0,305.0, 200.0, WHITE);
         
         next_frame().await;
     }
@@ -325,22 +277,4 @@ fn draw_scrolling_background(background: &Texture2D, scroll_speed: f32, offset: 
             ..Default::default()
         }
     );
-}
-
-fn circle_rect_intersect(
-    circle_x: f32,
-    circle_y: f32,
-    radius: f32,
-    rect_x: f32,
-    rect_y: f32,
-    rect_width: f32,
-    rect_height: f32,
-) -> bool {
-    let closest_x = circle_x.clamp(rect_x, rect_x + rect_width);
-    let closest_y = circle_y.clamp(rect_y, rect_y + rect_height);
-
-    let distance_x = circle_x - closest_x;
-    let distance_y = circle_y - closest_y;
-
-    (distance_x * distance_x + distance_y * distance_y) < (radius * radius)
 }
