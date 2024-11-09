@@ -174,7 +174,7 @@ async fn main() {
             }
 
         }
-        if collision_detected || bird.body.y + bird.body.r > screen_height() || bird.body.y < 0.0 {
+        if collision_detected || bird.body.y + bird.body.r > screen_height() || bird.body.y - bird.body.r< 0.0 {
             play_sound(&hit, PlaySoundParams { looped: false, volume: 1.0 });
             bird.die(&mut pipes);
             collision_detected = false;
